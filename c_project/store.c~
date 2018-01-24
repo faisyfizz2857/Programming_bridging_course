@@ -1,0 +1,165 @@
+#include "queue.c"
+#include <stdio.h>
+#include <stdlib.h>
+#include "prand.c"
+#include <string.h>
+//#include <windows.h>
+static int t = 0; 			// starting time
+static int T = 3600;		// end tme
+static int j = 0;
+static int dt = 1; 			// time step
+static int c = 3; 			// number of cashiers
+static int *queueTime; 		// waiting time of finished customers 
+static int finished = 0; 	// number of finished customers
+static int *NoC;			// array of customers for a certain time step
+static int totalNoC = 0; 	// total number of created customers
+static int allo = 100; 		// memory allocated for finished customers
+static int n_mean = 5; 		// average number of articles
+static int longest = 0;		// longest waiting time
+static double prob = 0.60;	// probabilty of a customer being created in each time step
+static Queue *cashiers;	 	// array of cashiers
+
+typedef
+struct Customer {
+	int articles;
+	int wait;
+} Customer;
+
+int length(Queue q) {
+	int len = 0;
+	while (qitMore(q)) {
+		len += ((Customer *) qitNext(q))->articles;
+	}
+	qitReset(q);
+	return len;
+}
+
+void printQueue(Queue q) {
+	while (qitMore(q)) {
+		printf("|%d  ", ((Customer *) qitNext(q))->wait);
+	}
+	qitReset(q);
+	return;
+}
+
+double meanWaitTime() {
+	int t_av = 0;
+	int i;
+	for (i = 0; i < finished; i++) {
+		t_av += queueTime[i];
+	}
+	return (double) t_av/finished;
+}
+
+int getNoC() {
+	int N = 0;
+	int i;
+	for (i = 0; i < c; i++) {
+		N += qLength(cashiers[i]);
+	}
+	return N;
+}
+
+double meanNoC() {
+	int N = 0;
+	int i;
+	for (i = 0; i < j; i++) {
+		N += NoC[i];
+	}
+	return (double) N/j;
+}
+
+void update() {
+	int i;
+	for (i = 0; i < c; i++) {
+		if (first(cashiers[i]) != NULL) {
+			Customer *customer = (Customer *) (cashiers[i]->first)->item;
+			if (customer->articles == 1) {			
+				if (finished == allo) {
+					allo *= 2;
+					queueTime = (int *) realloc(queueTime, allo*sizeof(int));
+				}
+				queueTime[finished] = customer->wait;
+				finished++;
+				if (customer->wait > longest)
+					longest = customer->wait;
+				dequeue(cashiers[i]);
+			} else {
+				customer->articles -= 1;
+			}
+			while (qitMore(cashiers[i])) {
+				customer = (Customer *) qitNext(cashiers[i]);
+				customer->wait += 1;
+			}
+			qitReset(cashiers[i]);
+		}
+	}
+	t += dt;
+	return;
+}
+
+int simulate() {
+	while (t < T) {
+		if (t%20 == 0) {
+			j++;
+			NoC[j] = getNoC();
+		}			
+		int shortest = 0x7ffffff; // shortest queue
+		if (drand48() <= prob) {
+			int n = 1 + prand();
+			Customer *person = (Customer *) malloc(sizeof(Customer));
+			int i_short = 0;
+			person->articles = n;
+			person->wait = -1;
+			int i;
+			for (i = 0; i < c; i++) {
+				int qLen = length(cashiers[i]);
+				if (qLen < shortest) {
+					shortest = qLen;
+					i_short = i;
+				}
+			}
+			totalNoC++;
+			enqueue(cashiers[i_short], person);
+		}
+		update();
+		sleep(500);
+		int i;
+		for (i = 0; i < c ; i++) {
+			printQueue(cashiers[i]);
+			printf("\n");
+		}
+		printf("\n"); 
+	}
+	return 0;
+}
+
+int main() {
+	printf("Simulation time: ");
+	scanf("%d", &T);
+	printf("Number of cashiers: ");
+	scanf("%d", &c);
+	printf("Average number of articles: ");
+	scanf("%d", &n_mean);
+	printf("Arrival rate (give number between 0 and 1) : ");
+	scanf("%lf", &prob);
+	printf("\n\n");
+	queueTime = (int *) malloc(allo*sizeof(int));
+	NoC = (int *) malloc(T*sizeof(int));
+	cashiers = (Queue *) malloc(c*sizeof(Queue));
+	int i;
+	for (i = 0; i < c; i++) {
+		cashiers[i] = newQueue();
+	}
+	sprand(n_mean-1);		
+	simulate();	
+	double x = meanWaitTime();
+	double y = meanNoC();
+	printf("%s%*d\n", "Longest wait time: ", 15, longest);
+	printf("Total number of customers: %*d\n", 7, totalNoC);
+	printf("Number of finished customers: %*d\n", 1, finished);
+	printf("Average wait time: %*.2f s\n", 17, x);
+	printf("Average number of customers: %*.2f\n", 7, y);
+	printf("Quotient: %.2f", (double) y/x);
+	return 0;
+}
